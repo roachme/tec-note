@@ -1,0 +1,127 @@
+#!/bin/bash
+
+PGNAME="tman-note"
+VERSION="v0.0.1"
+TASKDIR=
+PRJNAME=
+BRDNAME=
+TASKNAME=
+REPO_STORE=     # where to store repos (should be inside taskdir)
+ISDEBUG=false
+
+# TODO: add option for config path on CLI
+CONFIG_FILE=
+
+function die() {
+	echo "$PGNAME:" "$@" >&2
+	exit 1
+}
+
+function find_config()
+{
+    declare -a cfgs=(
+        "$HOME/.tec/pgn/note.json"
+        "$HOME/.config/tec/pgn/note.json"
+    )
+
+    for cfg in "${cfgs[@]}"; do
+        if [ -f "$cfg" ]; then
+            CONFIG_FILE="$cfg"
+            break
+        fi
+    done
+}
+
+note_add() {
+    echo "note_add: under develoment"
+}
+
+note_cat() {
+    echo "note_cat: under develoment"
+}
+
+note_help() {
+    echo "note_help: under develoment"
+}
+
+note_ls() {
+    echo "note_ls: under develoment"
+}
+
+note_rm() {
+    echo "note_rm: under develoment"
+}
+
+
+# Driver part of the code
+OPTS=$(getopt -o b:di:p:P:T:hV --long board:,debug,prj:,taskid:,pgndir:,taskdir:help,version -n "$PGNAME" -- "$@")
+if [ $? -ne 0 ]; then
+    #echo "error parsing options" >&2
+    exit 1
+fi
+
+## Reset the positional parameters to the parsed options
+eval set -- "$OPTS"
+
+while true; do
+    case "$1" in
+        -b)
+            BRDNAME="$2"
+            shift 2
+            ;;
+        -d)
+            ISDEBUG=true
+            shift 1
+            ;;
+        -i)
+            TASKNAME="$2"
+            shift 2
+            ;;
+        -p)
+            PRJNAME="$2"
+            shift 2
+            ;;
+        -P)
+            PGNDIRBASE="$2"
+            shift 2
+            ;;
+        -T)
+            TASKDIR="$2"
+            shift 2
+            ;;
+        -V)
+            echo "$PGNAME: $VERSION"
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            elog "invalid option '$1'"
+            exit 1
+    esac
+done
+
+
+note() {
+    local command=
+
+    [ $# -eq 0 ] && set -- "ls" # set default command
+    command="$1"; shift
+
+    # TODO: move it to a function
+    # Setup some stuff
+    REPO_STORE="$TASKDIR/.pgn/note"
+
+    case "$command" in
+        "add")      shift; note_add "$@" ;;
+        "cat")      shift; note_cat "$@" ;;
+        "help")     shift; note_help "$@" ;;
+        "ls")       shift; note_ls "$@" ;;
+        "rm")       shift; note_rm "$@" ;;
+        *)          die "'$command': no such command"
+    esac
+}
+
+note "$@"
