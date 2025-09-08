@@ -3,11 +3,11 @@
 PGNAME="tman-note"
 VERSION="v0.0.1"
 TASKDIR=
-PRJNAME=
-BRDNAME=
-TASKNAME=
+ARG_ENV=
+ARG_DESK=
+ARG_TASK=
 REPO_STORE=     # where to store repos (should be inside taskdir)
-ISDEBUG=false
+NOTE_BASE=      # where notes are stored
 
 # TODO: add option for config path on CLI
 CONFIG_FILE=
@@ -32,12 +32,124 @@ function find_config()
     done
 }
 
+function get_and_check_board()
+{
+    local curr=
+    local fname="$TASKDIR/$ARG_ENV/.tec/toggles"
+
+    if [ -f "$fname" ]; then
+        curr="$(grep -i curr "$fname" | cut -f 2 -d '=' | tr -d ' ')"
+    fi
+
+    if [ -z "$ARG_DESK" ]; then
+        ARG_DESK="$curr"
+    fi
+
+    # check project name
+    if [ -z "$ARG_DESK" ]; then
+        die "no board name is passed"
+    elif [ ! -d "$TASKDIR/$ARG_ENV/$ARG_DESK" ]; then
+        die "'$ARG_DESK': no such board name"
+    fi
+}
+
+function get_and_check_task()
+{
+    local curr=
+    local fname="$TASKDIR/$ARG_ENV/$ARG_DESK/.tec/toggles"
+
+    if [ -f "$fname" ]; then
+        curr="$(grep -i curr "$fname" | cut -f 2 -d '=' | tr -d ' ')"
+    fi
+
+    if [ -z "$ARG_TASK" ]; then
+        ARG_TASK="$curr"
+    fi
+
+    # check project name
+    if [ -z "$ARG_TASK" ]; then
+        die "no task ID is passed"
+    elif [ ! -d "$TASKDIR/$ARG_ENV/$ARG_DESK/$ARG_TASK" ]; then
+        die "'$ARG_TASK': no such task ID"
+    fi
+}
+
+function get_and_check_project()
+{
+    local curr=
+    local fname="$TASKDIR/.tec/toggles"
+
+    if [ -f "$fname" ]; then
+        curr="$(grep -i curr "$fname" | cut -f 2 -d '=' | tr -d ' ')"
+    fi
+
+    if [ -z "$ARG_ENV" ]; then
+        ARG_ENV="$curr"
+    fi
+
+    # check project name
+    if [ -z "$ARG_ENV" ]; then
+        die "no project name is passed"
+    elif [ ! -d "$TASKDIR/$ARG_ENV" ]; then
+        die "'$ARG_ENV': no such project name"
+    fi
+}
+
+function _note_check_args()
+{
+    get_and_check_project
+    get_and_check_board
+    get_and_check_task
+}
+
+# Generate a unique task ID
+generate_id() {
+    local taskid_limit=1000
+    local base="$TASKDIR/$ARG_ENV/.tec/pgn/note"
+
+    if [ ! -f "$base" ]; then
+        touch "$base"
+    fi
+
+    for taskid in $(seq -w "$taskid_limit"); do
+        if ! grep -q "$taskid :" "$base"; then
+            echo "$taskid"
+            return 0
+        fi
+    done
+
+    die "task ID limit is reached. There are $taskid_limit already"
+    return 1
+}
+
+
+function _note_init() {
+    mkdir -p "$TASKDIR/$ARG_ENV/.tec/pgn/"
+    NOTE_BASE="$TASKDIR/$ARG_ENV/.tec/pgn/note"
+}
+
+
 note_add() {
     echo "note_add: under develoment"
+    echo "$ARG_ENV $TASKDIR"
+    local ID=
+
+
+    for arg in "${@}"; do
+        echo "arg: $arg"
+    done
+
+
+    ID="$(generate_id)"
+    read -p "Enter note: " -r input
+    echo "$ID : $input" >> "$TASKDIR/$ARG_ENV/.tec/pgn/note"
 }
 
 note_cat() {
     echo "note_cat: under develoment"
+    for arg in "${@}"; do
+        echo "arg: $arg"
+    done
 }
 
 note_help() {
@@ -45,16 +157,26 @@ note_help() {
 }
 
 note_ls() {
-    echo "note_ls: under develoment"
+    if [ -f "$NOTE_BASE" ]; then
+        cat "$NOTE_BASE"
+    fi
 }
 
 note_rm() {
-    echo "note_rm: under develoment"
+    local noteid="$1"; shift
+
+    if [ -z "$noteid" ]; then
+        die "specify note ID"
+    elif ! grep -q "$noteid : " "$NOTE_BASE"; then
+        die "'$noteid': no such note ID"
+    fi
+
+    sed -iE "/^$noteid/d" "$NOTE_BASE"
 }
 
 
 # Driver part of the code
-OPTS=$(getopt -o b:di:p:P:T:hV --long board:,debug,prj:,taskid:,pgndir:,taskdir:help,version -n "$PGNAME" -- "$@")
+OPTS=$(getopt -o d:i:e:P:T:hV --long desk:,debug,env:,taskid:,pgndir:,taskdir:help,version -n "$PGNAME" -- "$@")
 if [ $? -ne 0 ]; then
     #echo "error parsing options" >&2
     exit 1
@@ -65,20 +187,16 @@ eval set -- "$OPTS"
 
 while true; do
     case "$1" in
-        -b)
-            BRDNAME="$2"
+        -d)
+            ARG_DESK="$2"
             shift 2
             ;;
-        -d)
-            ISDEBUG=true
-            shift 1
+        -e)
+            ARG_ENV="$2"
+            shift 2
             ;;
         -i)
-            TASKNAME="$2"
-            shift 2
-            ;;
-        -p)
-            PRJNAME="$2"
+            ARG_TASK="$2"
             shift 2
             ;;
         -P)
@@ -114,13 +232,16 @@ note() {
     # Setup some stuff
     REPO_STORE="$TASKDIR/.pgn/note"
 
+    _note_check_args
+    _note_init
+
     case "$command" in
-        "add")      shift; note_add "$@" ;;
-        "cat")      shift; note_cat "$@" ;;
-        "help")     shift; note_help "$@" ;;
-        "ls")       shift; note_ls "$@" ;;
-        "rm")       shift; note_rm "$@" ;;
-        *)          die "'$command': no such command"
+        add)      note_add "$@" ;;
+        cat)      note_cat "$@" ;;
+        help)     note_help "$@" ;;
+        ls)       note_ls "$@" ;;
+        rm)       note_rm "$@" ;;
+        *)        die "'$command': no such command"
     esac
 }
 
