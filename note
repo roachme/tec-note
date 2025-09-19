@@ -130,15 +130,11 @@ function _note_init() {
 
 
 note_add() {
-    echo "note_add: under develoment"
-    echo "$ARG_ENV $TASKDIR"
     local ID=
-
 
     for arg in "${@}"; do
         echo "arg: $arg"
     done
-
 
     ID="$(generate_id)"
     read -p "Enter note: " -r input
