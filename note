@@ -149,7 +149,15 @@ note_cat() {
 }
 
 note_help() {
-    echo "note_help: under develoment"
+    cat << EOF
+Usage: tec note [COMMAND]
+
+    add     - add a note
+    cat     - show a note
+    help    - show this help message and exit
+    ls      - list notes
+    rm      - remove a note
+EOF
 }
 
 note_ls() {
