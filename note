@@ -157,6 +157,7 @@ Usage: tec note [COMMAND]
     help    - show this help message and exit
     ls      - list notes
     rm      - remove a note
+    set     - set title and/or body of note
 EOF
 }
 
@@ -178,6 +179,18 @@ note_rm() {
     sed -iE "/^$noteid/d" "$NOTE_BASE"
 }
 
+note_set() {
+    # TODO:
+    # 1. Use separate file for each note .pgn/note/NOTE-ID/
+    # 2. Use this command to edit title (e.i. first line)
+    # 3. Add empty line
+    # 4. Add body of the note
+    NOTE_BASE="$TASKDIR/$ARG_ENV/.tec/pgn/note"
+
+    if [ -f "$NOTE_BASE" ]; then
+        eval "$EDITOR" "$NOTE_BASE"
+    fi
+}
 
 # Driver part of the code
 OPTS=$(getopt -o d:i:e:P:T:hV --long desk:,debug,env:,taskid:,pgndir:,taskdir:help,version -n "$PGNAME" -- "$@")
@@ -245,6 +258,7 @@ note() {
         help)     note_help "$@" ;;
         ls)       note_ls "$@" ;;
         rm)       note_rm "$@" ;;
+        set)      note_set "$@" ;;
         *)        die "'$command': no such command"
     esac
 }
