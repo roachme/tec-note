@@ -1,266 +1,558 @@
-#!/bin/bash
+#!/bin/env lua
 
-PGNAME="tman-note"
-VERSION="v0.0.1"
-TASKDIR=
-ARG_ENV=
-ARG_DESK=
-ARG_TASK=
-REPO_STORE=     # where to store repos (should be inside taskdir)
-NOTE_BASE=      # where notes are stored
+-- TODO: add support for current env, note ID, etc
 
-# TODO: add option for config path on CLI
-CONFIG_FILE=
 
-function die() {
-	echo "$PGNAME:" "$@" >&2
-	exit 1
+local Program = "tec-note"
+local Version = "v0.0.1"
+
+local Arg = {}
+Arg.__index = Arg
+local Note = {}
+
+local lfs = require("lfs")
+local getopt = require("posix.unistd").getopt
+
+local function elog(status, fmt, ...)
+    io.stderr:write(string.format("%s " .. fmt .. "\n", Program, ...))
+    return status
+end
+
+local function die(status, fmt, ...)
+    elog(status, fmt, ...)
+    os.exit(status)
+end
+
+local function generate_note_id(args)
+    local limit = 1000
+    local padding = "4" -- cuz limit is 1000, i.e. 4 digits
+    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+
+    for i = 1, limit do
+        local note_id = string.format("%0" .. padding .. "d", i)
+        local fname = dirname .. "/" .. note_id
+        local attr = lfs.attributes(fname)
+        if not attr then
+            return note_id
+        end
+    end
+    return die(1, "note ID limit is %s", limit)
+end
+
+local helpmsgs = {
+    {
+        name = "note",
+        msg =
+[[
+Usage: tec note [OPTION]... [COMMAND] [ARG]...
+    Note taking plugin
+
+    Commands:
+      add      - add a new note
+      cat      - show note
+      ed       - edit title or body
+      help     - get help on commands
+      ls       - list of note
+      mv       - move or rename note ID
+      rm       - remove note
+      set      - set note column and metadata
+      ver      - show version ]]
+    },
+    {
+        name = "add",
+        msg =
+[[
+Usage: tec note add [OPTION]... [ID]...
+    Add a new note
+    If ID is not passed the note ID is generated.
+
+    Options:
+      -b MSG    body message
+      -t MSG    title message
+
+    Return value: ]]
+    },
+    {
+        name = "cat",
+        msg =
+[[
+Usage: tec note cat [OPTION]... [ID]...
+    Show note
+
+    Options
+
+    Return value: ]]
+    },
+    {
+        name = "ed",
+        msg =
+[[
+Usage: tec note ed [OPTION]... [ID]...
+    Edit note message
+
+    Options:
+      -i        open editor to make changes
+      -b MSG    pass body message
+      -t MSG    pass title message
+
+    Return value: ]]
+
+    },
+    {
+        name = "help",
+        msg =
+[[
+Usage: tec note help [OPTION]... [ID]...
+    Show help messages
+
+    Options:
+
+    Return value: ]]
+    },
+    {
+        name = "ls",
+        msg =
+[[
+Usage: tec note ls [OPTION]... [ENV]...
+    Show list of notes
+
+    Options:
+
+    Return value: ]]
+    },
+    {
+        name = "mv",
+        msg =
+[[
+Usage: tec note mv [OPTION]... SRC DST
+    Move or rename note ID
+
+    Options:
+
+    Return value: ]]
+    },
+    {
+        name = "rm",
+        msg =
+[[
+Usage: tec note rm [OPTION]... [ID]...
+    Remove note
+
+    Options:
+      -f        ignore nonexistent note IDs, never prompt
+
+    Return value: ]]
+    },
+    {
+        name = "set",
+        msg =
+[[
+Usage: tec note set [OPTION]... [ID]...
+    Set column and metadata
+
+    Options:
+
+    Return value: ]]
+    },
+    {
+        name = "ver",
+        msg =
+[[
+Usage: tec note ver
+    Show plugin version
+
+    Return value: always return 0 ]]
+    },
 }
 
-function find_config()
-{
-    declare -a cfgs=(
-        "$HOME/.tec/pgn/note.json"
-        "$HOME/.config/tec/pgn/note.json"
-    )
+function Arg:new()
+    local obj = {}
+    setmetatable(obj, self)
+    return obj
+end
 
-    for cfg in "${cfgs[@]}"; do
-        if [ -f "$cfg" ]; then
-            CONFIG_FILE="$cfg"
-            break
-        fi
-    done
-}
+-- TODO: write an implementation
+function Arg:get_env_curr()
+    local buf
+    local file = io.open(self.taskdir .. "/" .. ".tec/toggles")
 
-function get_and_check_board()
-{
-    local curr=
-    local fname="$TASKDIR/$ARG_ENV/.tec/toggles"
+    if file then
+        buf = file:read("*l") or ""
+        buf = string.match(buf, "=(.+)")
+        self.curr_env = buf
+        file:close()
+    end
 
-    if [ -f "$fname" ]; then
-        curr="$(grep -i curr "$fname" | cut -f 2 -d '=' | tr -d ' ')"
-    fi
+    return self.curr_env
+end
 
-    if [ -z "$ARG_DESK" ]; then
-        ARG_DESK="$curr"
-    fi
+-- TODO: write an implementation
+function Arg:get_id_curr()
+    self.curr_id = "0001"
+    return self.curr_id
+end
 
-    # check project name
-    if [ -z "$ARG_DESK" ]; then
-        die "no board name is passed"
-    elif [ ! -d "$TASKDIR/$ARG_ENV/$ARG_DESK" ]; then
-        die "'$ARG_DESK': no such board name"
-    fi
-}
+function Arg:env_valid(env)
+    return env == string.match(env, "%w+")
+end
 
-function get_and_check_task()
-{
-    local curr=
-    local fname="$TASKDIR/$ARG_ENV/$ARG_DESK/.tec/toggles"
+function Arg:env_exist(fname)
+    local attr = lfs.attributes(fname)
+    return attr ~= nil and attr.mode == "directory"
+end
 
-    if [ -f "$fname" ]; then
-        curr="$(grep -i curr "$fname" | cut -f 2 -d '=' | tr -d ' ')"
-    fi
+function Arg:env_check()
+    self.env = self.env or self:get_env_curr()
 
-    if [ -z "$ARG_TASK" ]; then
-        ARG_TASK="$curr"
-    fi
+    -- TOOD: check that passed env is valid and exsits
+    if not self.env then
+        return die(1, "no current env")
+    elseif not self:env_valid(self.env) then
+        return die(1, "'%s': invalid env name", self.env)
+    end
+    return 0
+end
 
-    # check project name
-    if [ -z "$ARG_TASK" ]; then
-        die "no task ID is passed"
-    elif [ ! -d "$TASKDIR/$ARG_ENV/$ARG_DESK/$ARG_TASK" ]; then
-        die "'$ARG_TASK': no such task ID"
-    fi
-}
+function Arg:check_id(id)
+    self.id = id or self:get_id_curr()
 
-function get_and_check_project()
-{
-    local curr=
-    local fname="$TASKDIR/.tec/toggles"
+    -- TOOD: check that passed id is valid and exsits
+    if not self.id then
+        return die(1, "no current id")
+    end
+end
 
-    if [ -f "$fname" ]; then
-        curr="$(grep -i curr "$fname" | cut -f 2 -d '=' | tr -d ' ')"
-    fi
+function Arg:id_valid(id)
+    return id == string.match(id, "%w+")
+end
 
-    if [ -z "$ARG_ENV" ]; then
-        ARG_ENV="$curr"
-    fi
+function Arg:id_exist(fname)
+    local attr = lfs.attributes(fname)
+    return attr ~= nil and attr.mode == "file"
+end
 
-    # check project name
-    if [ -z "$ARG_ENV" ]; then
-        die "no project name is passed"
-    elif [ ! -d "$TASKDIR/$ARG_ENV" ]; then
-        die "'$ARG_ENV': no such project name"
-    fi
-}
 
-function _note_check_args()
-{
-    get_and_check_project
-    get_and_check_board
-    get_and_check_task
-}
+function Note._get_head(fname)
+    local head
+    local file = io.open(fname)
 
-# Generate a unique task ID
-generate_id() {
-    local taskid_limit=1000
-    local base="$TASKDIR/$ARG_ENV/.tec/pgn/note"
+    if not file then
+        return die(1, "'%s': no such note file", fname)
+    end
 
-    if [ ! -f "$base" ]; then
-        touch "$base"
-    fi
+    head = file:read("*l")
+    file:close()
+    return head
+end
 
-    for taskid in $(seq -w "$taskid_limit"); do
-        if ! grep -q "$taskid :" "$base"; then
-            echo "$taskid"
+function Note._set_head(fname, msg)
+    local file = io.open(fname, "w")
+
+    if not file then
+        return die(1, "'%s': could not create a note file", fname)
+    end
+
+    file:write(msg, "\n")
+    file:close()
+end
+
+function Note._set_tail(fname, msg)
+    local file = io.open(fname, "a+")
+
+    if not file then
+        return die(1, "'%s': could not open a note file", fname)
+    end
+
+    file:write("\n", msg, "\n")
+    file:close()
+end
+
+function Note._get_tail(fname)
+    local _, tail
+    local file = io.open(fname)
+
+    if not file then
+        return die(1, "'%s': no such note file", fname)
+    end
+
+    _ = file:read("*l") -- skip title
+    _ = file:read("*l") -- skip empty line
+
+    tail = file:read("*a") or ""
+    file:close()
+    return tail
+end
+
+function Note.init()
+end
+
+function Note.add(args)
+    local lastind = 1
+    local is_interactive = true
+    local is_head = false
+    local is_tail = false
+    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+
+    local title, body
+
+    -- TODO: add option `-i' to add note interactively
+    for optopt, optarg, optind in getopt(arg, ":t:b:") do
+        if optopt == '?' then
+            return die(1, "'%s': unrecognized option", arg[optind - 1])
+        end
+
+        if optopt == 't' then
+            is_interactive = false
+            is_head = true
+            title = optarg
+        elseif optopt == 'b' then
+            is_interactive = false
+            is_tail = true
+            body = optarg
+        end
+        lastind = optind
+    end
+
+    -- HOTFIX?: set current env if none passed
+    if #arg == 0 then
+        table.insert(arg, generate_note_id(args))
+    end
+
+    -- TODO: generate note ID
+    for i = lastind, #arg do
+        if not args:id_valid(arg[i]) then
+            print("not a valid id: ", arg[i])
+        elseif args:id_exist(dirname .. "/" .. arg[i]) then
+            print("note id already exsits: ", arg[i])
+        else
+            if is_interactive == true then
+                io.write("Title: ")
+                title = io.read()
+                Note._set_head(dirname .. "/" .. arg[i], title)
+            end
+
+            if is_head then
+                print("add: add a title to file")
+                Note._set_head(dirname .. "/" .. arg[i], title)
+            end
+            if is_tail then
+                print("add: add a body to file")
+                Note._set_tail(dirname .. "/" .. arg[i], body)
+            end
+        end
+    end
+end
+
+function Note.cat(args)
+    local status = 0
+    local lastind = 1
+    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+
+    for i = lastind, #arg do
+        io.write(Note._get_tail(dirname .. "/" .. arg[i]))
+    end
+    return status
+end
+
+function Note.ed(args)
+    local lastind = 1
+    local is_interactive = true
+    local is_head = false
+    local is_tail = false
+    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+
+    local title, body
+
+    for i = 1, #arg do
+        print("add arg", i, arg[i])
+    end
+
+    for optopt, optarg, optind in getopt(arg, ":it:b:") do
+        if optopt == '?' then
+            return die(1, "'%s': unrecognized option", arg[optind - 1])
+        end
+
+        -- TODO: option 'i'nteractive -> open editor
+        if optopt == 'i' then
+            is_interactive = true
+            is_head = false
+            is_tail = false
+        elseif optopt == 't' then
+            is_interactive = false
+            is_head = true
+            title = optarg
+        elseif optopt == 'b' then
+            is_interactive = false
+            is_tail = true
+            body = optarg
+        end
+        lastind = optind
+    end
+
+    -- TODO: generate note ID
+    for i = lastind, #arg do
+        if not args:id_valid(arg[i]) then
+            elog(1, "'%s': not a valid id", arg[i])
+        elseif not args:id_exist(dirname .. "/" .. arg[i]) then
+            elog(1, "'%s': note ID does not exsit", arg[i])
+        else
+            if is_interactive == true then
+                -- TODO: open editor to make changes
+                os.execute("$EDITOR " .. dirname .. "/" .. arg[i])
+            end
+            if is_head then
+                print("ed: edit a title to file: under development cuz body might get lost")
+                --Note._set_head(dirname .. "/" .. arg[i], title)
+            end
+            if is_tail then
+                print("ed: edit a body to file: under development cuz head might get lost")
+                --Note._set_tail(dirname .. "/" .. arg[i], body)
+            end
+        end
+    end
+end
+
+function Note.help(args)
+    local cmd = arg[1] or "note"
+
+    for _, msg in pairs(helpmsgs) do
+        if cmd == msg.name then
+            print(msg.msg)
             return 0
-        fi
-    done
+        end
+    end
+    return die(1, "'%s': no such command to show help message", cmd)
+end
 
-    die "task ID limit is reached. There are $taskid_limit already"
-    return 1
+function Note.ls(args)
+    local status = 0
+    local lastind = 1
+    local fmt = "%-10s %s"
+
+    -- HOTFIX?: set current env if none passed
+    if #arg == 0 then
+        table.insert(arg, args.env)
+    end
+
+    for i = lastind, #arg do
+        local dirname = args.taskdir .. "/" .. arg[i] .. "/" .. ".tec/pgn/note"
+
+        if not args:env_valid(arg[i]) then
+            status = elog(1, "'%s': invalid env name", arg[i])
+        elseif not args:env_exist(dirname) then
+            status = elog(1, "'%s': no such env", arg[i])
+        else
+            for entry in lfs.dir(dirname) do
+                local fname = dirname .. "/" .. entry
+                local attr = lfs.attributes(fname)
+
+                if attr.mode == "file" then
+                    local head = Note._get_head(fname)
+                    print(string.format(fmt, entry, head))
+                end
+            end
+        end
+    end
+    return status
+end
+
+function Note.mv(args)
+    local status = 0
+    return status
+end
+
+function Note.rm(args)
+    local choice, fname
+    local lastind = 1
+    local force = false
+    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+
+    for optopt, optarg, optind in getopt(arg, ":f") do
+        if optopt == '?' then
+            return die(1, "'%s': unrecognized option", arg[optind - 1])
+        end
+        lastind = optind
+
+        if optopt == 'f' then
+            force = true
+        end
+    end
+
+    for i = lastind, #arg do
+        fname = dirname .. "/" .. arg[i]
+        if force == false then
+            io.write(string.format("remove note file '%s'? ", arg[i]))
+            choice = io.read()
+            if choice == 'y' or choice == 'yes' then
+                os.remove(fname)
+            end
+        else
+            os.remove(fname)
+        end
+    end
+end
+
+-- Set column and metadata
+function Note.set(args)
+    local status = 0
+    return status
+end
+
+function Note.ver()
+    print(string.format("%s: %s", Program, Version))
+end
+
+local Commands = {
+    { name = "add", func = Note.add },
+    { name = "cat", func = Note.cat },
+    { name = "ed", func = Note.ed },
+    { name = "help", func = Note.help },
+    { name = "ls", func = Note.ls },
+    { name = "mv", func = Note.mv },
+    { name = "rm", func = Note.rm },
+    { name = "set", func = Note.set },
+    { name = "ver", func = Note.ver },
 }
 
+local function main()
+    local lastind = 1
+    local command = nil
+    local args = Arg:new()
 
-function _note_init() {
-    mkdir -p "$TASKDIR/$ARG_ENV/.tec/pgn/"
-    NOTE_BASE="$TASKDIR/$ARG_ENV/.tec/pgn/note"
-}
+    for optopt, optarg, optind in getopt(arg, ":d:e:i:P:T:") do
+        if optopt == '?' then
+            return die(1, "'%s': unrecognized option", arg[optind - 1])
+        end
+        lastind = optind
 
+        if optopt == 'd' then
+            Arg.desk = optarg
+        elseif optopt == 'e' then
+            Arg.env = optarg
+        elseif optopt == 'i' then
+            Arg.taskid = optarg
+        elseif optopt == 'P' then
+            Arg.pgndir = optarg
+        elseif optopt == 'T' then
+            Arg.taskdir = optarg
+        end
+    end
 
-note_add() {
-    local ID=
+    for _ = 1, lastind - 1 do
+        table.remove(arg, 1)
+    end
 
-    for arg in "${@}"; do
-        echo "arg: $arg"
-    done
+    command = table.remove(arg, 1) or "ls"
 
-    ID="$(generate_id)"
-    read -p "Enter note: " -r input
-    echo "$ID : $input" >> "$TASKDIR/$ARG_ENV/.tec/pgn/note"
-}
+    -- TODO: Get currents and check them
+    args:env_check()
 
-note_cat() {
-    echo "note_cat: under develoment"
-    for arg in "${@}"; do
-        echo "arg: $arg"
-    done
-}
+    for _, cmd in pairs(Commands) do
+        if command == cmd.name then
+            return cmd.func(args)
+        end
+    end
+    return die(1, "'%s': no such command", command)
+end
 
-note_help() {
-    cat << EOF
-Usage: tec note [COMMAND]
-
-    add     - add a note
-    cat     - show a note
-    help    - show this help message and exit
-    ls      - list notes
-    rm      - remove a note
-    set     - set title and/or body of note
-EOF
-}
-
-note_ls() {
-    if [ -f "$NOTE_BASE" ]; then
-        cat "$NOTE_BASE"
-    fi
-}
-
-note_rm() {
-    local noteid="$1"; shift
-
-    if [ -z "$noteid" ]; then
-        die "specify note ID"
-    elif ! grep -q "$noteid : " "$NOTE_BASE"; then
-        die "'$noteid': no such note ID"
-    fi
-
-    sed -iE "/^$noteid/d" "$NOTE_BASE"
-}
-
-note_set() {
-    # TODO:
-    # 1. Use separate file for each note .pgn/note/NOTE-ID/
-    # 2. Use this command to edit title (e.i. first line)
-    # 3. Add empty line
-    # 4. Add body of the note
-    NOTE_BASE="$TASKDIR/$ARG_ENV/.tec/pgn/note"
-
-    if [ -f "$NOTE_BASE" ]; then
-        eval "$EDITOR" "$NOTE_BASE"
-    fi
-}
-
-# Driver part of the code
-OPTS=$(getopt -o d:i:e:P:T:hV --long desk:,debug,env:,taskid:,pgndir:,taskdir:help,version -n "$PGNAME" -- "$@")
-if [ $? -ne 0 ]; then
-    #echo "error parsing options" >&2
-    exit 1
-fi
-
-## Reset the positional parameters to the parsed options
-eval set -- "$OPTS"
-
-while true; do
-    case "$1" in
-        -d)
-            ARG_DESK="$2"
-            shift 2
-            ;;
-        -e)
-            ARG_ENV="$2"
-            shift 2
-            ;;
-        -i)
-            ARG_TASK="$2"
-            shift 2
-            ;;
-        -P)
-            PGNDIRBASE="$2"
-            shift 2
-            ;;
-        -T)
-            TASKDIR="$2"
-            shift 2
-            ;;
-        -V)
-            echo "$PGNAME: $VERSION"
-            exit 0
-            ;;
-        --)
-            shift
-            break
-            ;;
-        *)
-            elog "invalid option '$1'"
-            exit 1
-    esac
-done
-
-
-note() {
-    local command=
-
-    [ $# -eq 0 ] && set -- "ls" # set default command
-    command="$1"; shift
-
-    # TODO: move it to a function
-    # Setup some stuff
-    REPO_STORE="$TASKDIR/.pgn/note"
-
-    _note_check_args
-    _note_init
-
-    case "$command" in
-        add)      note_add "$@" ;;
-        cat)      note_cat "$@" ;;
-        help)     note_help "$@" ;;
-        ls)       note_ls "$@" ;;
-        rm)       note_rm "$@" ;;
-        set)      note_set "$@" ;;
-        *)        die "'$command': no such command"
-    esac
-}
-
-note "$@"
+os.exit(main())
