@@ -196,7 +196,8 @@ function Arg:env_valid(env)
     return env == string.match(env, "%w+")
 end
 
-function Arg:env_exist(fname)
+function Arg:env_exist(env)
+    local fname = self.taskdir .. "/" .. env .. "/" .. ".tec/pgn/note"
     local attr = lfs.attributes(fname)
     return attr ~= nil and attr.mode == "directory"
 end
@@ -204,7 +205,7 @@ end
 function Arg:env_check()
     self.env = self.env or self:get_env_curr()
 
-    -- TOOD: check that passed env is valid and exsits
+    -- TOOD: check that passed env is valid and exists
     if not self.env then
         return die(1, "no current env")
     elseif not self:env_valid(self.env) then
@@ -216,7 +217,7 @@ end
 function Arg:check_id(id)
     self.id = id or self:get_id_curr()
 
-    -- TOOD: check that passed id is valid and exsits
+    -- TOOD: check that passed id is valid and exists
     if not self.id then
         return die(1, "no current id")
     end
@@ -226,7 +227,9 @@ function Arg:id_valid(id)
     return id == string.match(id, "%w+")
 end
 
-function Arg:id_exist(fname)
+function Arg:id_exist(id)
+    local dirname = self.taskdir .. "/" .. self.env .. "/" .. ".tec/pgn/note"
+    local fname = dirname .. "/" .. id
     local attr = lfs.attributes(fname)
     return attr ~= nil and attr.mode == "file"
 end
@@ -237,7 +240,7 @@ function Note._get_head(fname)
     local file = io.open(fname)
 
     if not file then
-        return die(1, "'%s': no such note file", fname)
+        return nil
     end
 
     head = file:read("*l")
@@ -322,8 +325,8 @@ function Note.add(args)
     for i = lastind, #arg do
         if not args:id_valid(arg[i]) then
             print("not a valid id: ", arg[i])
-        elseif args:id_exist(dirname .. "/" .. arg[i]) then
-            print("note id already exsits: ", arg[i])
+        elseif args:id_exist(arg[i]) then
+            print("note id already exists: ", arg[i])
         else
             if is_interactive == true then
                 io.write("Title: ")
@@ -349,7 +352,13 @@ function Note.cat(args)
     local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
 
     for i = lastind, #arg do
-        io.write(Note._get_tail(dirname .. "/" .. arg[i]))
+        if not args:id_valid(arg[i]) then
+            elog(1, "'%s': invalid note id", arg[i])
+        elseif not args:id_exist(arg[i]) then
+            elog(1, "'%s': no such note ID", arg[i])
+        else
+            io.write(Note._get_tail(dirname .. "/" .. arg[i]))
+        end
     end
     return status
 end
@@ -392,9 +401,9 @@ function Note.ed(args)
     -- TODO: generate note ID
     for i = lastind, #arg do
         if not args:id_valid(arg[i]) then
-            elog(1, "'%s': not a valid id", arg[i])
-        elseif not args:id_exist(dirname .. "/" .. arg[i]) then
-            elog(1, "'%s': note ID does not exsit", arg[i])
+            elog(1, "'%s': invalid note id", arg[i])
+        elseif not args:id_exist(arg[i]) then
+            elog(1, "'%s': no such note ID", arg[i])
         else
             if is_interactive == true then
                 -- TODO: open editor to make changes
@@ -439,7 +448,7 @@ function Note.ls(args)
 
         if not args:env_valid(arg[i]) then
             status = elog(1, "'%s': invalid env name", arg[i])
-        elseif not args:env_exist(dirname) then
+        elseif not args:env_exist(arg[i]) then
             status = elog(1, "'%s': no such env", arg[i])
         else
             for entry in lfs.dir(dirname) do
@@ -479,15 +488,21 @@ function Note.rm(args)
     end
 
     for i = lastind, #arg do
-        fname = dirname .. "/" .. arg[i]
-        if force == false then
-            io.write(string.format("remove note file '%s'? ", arg[i]))
-            choice = io.read()
-            if choice == 'y' or choice == 'yes' then
+        if not args:id_valid(arg[i]) then
+            elog(1, "'%s': invalid note id", arg[i])
+        elseif not args:id_exist(arg[i]) then
+            elog(1, "'%s': no such note ID", arg[i])
+        else
+            fname = dirname .. "/" .. arg[i]
+            if force == false then
+                io.write(string.format("remove note file '%s'? ", arg[i]))
+                choice = io.read()
+                if choice == 'y' or choice == 'yes' then
+                    os.remove(fname)
+                end
+            else
                 os.remove(fname)
             end
-        else
-            os.remove(fname)
         end
     end
 end
