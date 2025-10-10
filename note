@@ -518,8 +518,10 @@ local function main()
     local lastind = 1
     local command = nil
     local args = Arg:new()
+    local opt_help = false
+    local opt_version = false
 
-    for optopt, optarg, optind in getopt(arg, ":d:e:i:P:T:") do
+    for optopt, optarg, optind in getopt(arg, ":d:e:hi:P:T:v") do
         if optopt == '?' then
             return die(1, "'%s': unrecognized option", arg[optind - 1])
         end
@@ -529,20 +531,29 @@ local function main()
             Arg.desk = optarg
         elseif optopt == 'e' then
             Arg.env = optarg
+        elseif optopt == 'h' then
+            opt_help = true
         elseif optopt == 'i' then
             Arg.taskid = optarg
         elseif optopt == 'P' then
             Arg.pgndir = optarg
         elseif optopt == 'T' then
             Arg.taskdir = optarg
+        elseif optopt == 'v' then
+            opt_version = true
         end
     end
-
     for _ = 1, lastind - 1 do
         table.remove(arg, 1)
     end
 
     command = table.remove(arg, 1) or "ls"
+
+    if opt_help == true then
+        command = "help"
+    elseif opt_version == true then
+        command = "ver"
+    end
 
     -- TODO: Get currents and check them
     args:env_check()
