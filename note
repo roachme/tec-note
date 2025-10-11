@@ -489,9 +489,13 @@ function Note.rm(args)
 
     for i = lastind, #arg do
         if not args:id_valid(arg[i]) then
-            elog(1, "'%s': invalid note id", arg[i])
+            if force == false then
+                elog(1, "'%s': invalid note id", arg[i])
+            end
         elseif not args:id_exist(arg[i]) then
-            elog(1, "'%s': no such note ID", arg[i])
+            if force == false then
+                elog(1, "'%s': no such note ID", arg[i])
+            end
         else
             fname = dirname .. "/" .. arg[i]
             if force == false then
