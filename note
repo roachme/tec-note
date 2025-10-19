@@ -286,7 +286,12 @@ function Note._get_tail(fname)
     return tail
 end
 
-function Note.init()
+function Note.init(args)
+    -- TODO: find a way to create nested directories
+    local dirname1 = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn"
+    local dirname2 = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+    lfs.mkdir(dirname1)
+    lfs.mkdir(dirname2)
 end
 
 function Note.add(args)
@@ -589,6 +594,8 @@ local function main()
 
     -- TODO: Get currents and check them
     args:env_check()
+
+    Note.init(args)
 
     for _, cmd in pairs(Commands) do
         if command == cmd.name then
