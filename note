@@ -188,7 +188,7 @@ end
 
 -- TODO: write an implementation
 function Arg:get_id_curr()
-    self.curr_id = "0001"
+    -- TODO: add support for current and previous note IDs
     return self.curr_id
 end
 
@@ -351,6 +351,10 @@ function Note.cat(args)
     local lastind = 1
     local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
 
+    if #arg == 0 and not args:get_id_curr() then
+        return elog(1, "'NOCURR': no current note ID")
+    end
+
     for i = lastind, #arg do
         if not args:id_valid(arg[i]) then
             elog(1, "'%s': invalid note id", arg[i])
@@ -372,8 +376,8 @@ function Note.ed(args)
 
     local title, body
 
-    for i = 1, #arg do
-        print("add arg", i, arg[i])
+    if #arg == 0 and not args:get_id_curr() then
+        return elog(1, "'NOCURR': no current note ID")
     end
 
     for optopt, optarg, optind in getopt(arg, ":it:b:") do
@@ -476,6 +480,10 @@ function Note.rm(args)
     local force = false
     local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
 
+    if #arg == 0 and not args:get_id_curr() then
+        return elog(1, "'NOCURR': no current note ID")
+    end
+
     for optopt, optarg, optind in getopt(arg, ":f") do
         if optopt == '?' then
             return die(1, "'%s': unrecognized option", arg[optind - 1])
@@ -514,6 +522,11 @@ end
 -- Set column and metadata
 function Note.set(args)
     local status = 0
+
+    if #arg == 0 and not args:get_id_curr() then
+        return elog(1, "'NOCURR': no current note ID")
+    end
+
     return status
 end
 

@@ -1,2 +1,3 @@
 + ls - show the title
 + cat - show the body
+  TODO: add support for current and previous note IDs
