@@ -23,14 +23,24 @@ local function die(status, fmt, ...)
     os.exit(status)
 end
 
+local function get_dirname(taskdir, env)
+    local dirname = taskdir .. "/" .. env .. "/" .. ".tec/pgn/note"
+    return dirname
+end
+
+local function get_note_id(dirname, note_id)
+    local fname = dirname .. "/" .. note_id
+    return fname
+end
+
 local function generate_note_id(args)
     local limit = 1000
     local padding = "4" -- cuz limit is 1000, i.e. 4 digits
-    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+    local dirname = get_dirname(args.taskdir, args.env)
 
     for i = 1, limit do
         local note_id = string.format("%0" .. padding .. "d", i)
-        local fname = dirname .. "/" .. note_id
+        local fname = get_note_id(dirname, note_id)
         local attr = lfs.attributes(fname)
         if not attr then
             return note_id
@@ -197,7 +207,7 @@ function Arg:env_valid(env)
 end
 
 function Arg:env_exist(env)
-    local fname = self.taskdir .. "/" .. env .. "/" .. ".tec/pgn/note"
+    local fname = get_dirname(self.taskdir, self.env)
     local attr = lfs.attributes(fname)
     return attr ~= nil and attr.mode == "directory"
 end
@@ -228,7 +238,7 @@ function Arg:id_valid(id)
 end
 
 function Arg:id_exist(id)
-    local dirname = self.taskdir .. "/" .. self.env .. "/" .. ".tec/pgn/note"
+    local dirname = get_dirname(self.taskdir, self.env)
     local fname = dirname .. "/" .. id
     local attr = lfs.attributes(fname)
     return attr ~= nil and attr.mode == "file"
@@ -299,7 +309,7 @@ function Note.add(args)
     local is_interactive = true
     local is_head = false
     local is_tail = false
-    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+    local dirname = get_dirname(args.taskdir, args.env)
 
     local title, body
 
@@ -354,7 +364,7 @@ end
 function Note.cat(args)
     local status = 0
     local lastind = 1
-    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+    local dirname = get_dirname(args.taskdir, args.env)
 
     if #arg == 0 and not args:get_id_curr() then
         return elog(1, "'NOCURR': no current note ID")
@@ -377,7 +387,7 @@ function Note.ed(args)
     local is_interactive = true
     local is_head = false
     local is_tail = false
-    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+    local dirname = get_dirname(args.taskdir, args.env)
 
     local title, body
 
@@ -453,7 +463,7 @@ function Note.ls(args)
     end
 
     for i = lastind, #arg do
-        local dirname = args.taskdir .. "/" .. arg[i] .. "/" .. ".tec/pgn/note"
+        local dirname = get_dirname(args.taskdir, arg[i])
 
         if not args:env_valid(arg[i]) then
             status = elog(1, "'%s': invalid env name", arg[i])
@@ -483,7 +493,7 @@ function Note.rm(args)
     local choice, fname
     local lastind = 1
     local force = false
-    local dirname = args.taskdir .. "/" .. args.env .. "/" .. ".tec/pgn/note"
+    local dirname = get_dirname(args.taskdir, args.env)
 
     if #arg == 0 and not args:get_id_curr() then
         return elog(1, "'NOCURR': no current note ID")
