@@ -188,7 +188,7 @@ function Arg:get_env_curr()
 
     if file then
         buf = file:read("*l") or ""
-        buf = string.match(buf, "=(.+)")
+        buf = string.match(buf, ":%s*(.+)")
         self.curr_env = buf
         file:close()
     end
@@ -568,15 +568,15 @@ local function main()
     local opt_help = false
     local opt_version = false
 
-    for optopt, optarg, optind in getopt(arg, ":d:e:hi:P:T:v") do
+    for optopt, optarg, optind in getopt(arg, ":b:p:hi:P:T:v") do
         if optopt == '?' then
             return die(1, "'%s': unrecognized option", arg[optind - 1])
         end
         lastind = optind
 
-        if optopt == 'd' then
+        if optopt == 'b' then -- desk - board
             Arg.desk = optarg
-        elseif optopt == 'e' then
+        elseif optopt == 'p' then -- env - project
             Arg.env = optarg
         elseif optopt == 'h' then
             opt_help = true
