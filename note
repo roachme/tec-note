@@ -568,15 +568,15 @@ local function main()
     local opt_help = false
     local opt_version = false
 
-    for optopt, optarg, optind in getopt(arg, ":b:p:hi:P:T:v") do
+    for optopt, optarg, optind in getopt(arg, ":d:e:hi:P:T:v") do
         if optopt == '?' then
             return die(1, "'%s': unrecognized option", arg[optind - 1])
         end
         lastind = optind
 
-        if optopt == 'b' then -- desk - board
+        if optopt == 'd' then
             Arg.desk = optarg
-        elseif optopt == 'p' then -- env - project
+        elseif optopt == 'e' then
             Arg.env = optarg
         elseif optopt == 'h' then
             opt_help = true
