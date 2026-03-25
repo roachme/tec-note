@@ -14,7 +14,7 @@ local lfs = require("lfs")
 local getopt = require("posix.unistd").getopt
 
 local function elog(status, fmt, ...)
-    io.stderr:write(string.format("%s " .. fmt .. "\n", Program, ...))
+    io.stderr:write(string.format("%s: " .. fmt .. "\n", Program, ...))
     return status
 end
 
