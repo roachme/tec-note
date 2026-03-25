@@ -207,7 +207,7 @@ function Arg:env_valid(env)
 end
 
 function Arg:env_exist(env)
-    local fname = get_dirname(self.taskdir, self.env)
+    local fname = get_dirname(self.taskdir, env)
     local attr = lfs.attributes(fname)
     return attr ~= nil and attr.mode == "directory"
 end
